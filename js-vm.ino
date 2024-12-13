@@ -14,8 +14,8 @@
 // Configuration (Adjust as needed)
 #define MAX_VMS 5
 #define MAX_FILENAME_LEN 32
-#define WIFI_SSID "Lastditchwifi-2.4"
-#define WIFI_PASSWORD "Mune0420"
+#define WIFI_SSID "your_wifi_ssid"
+#define WIFI_PASSWORD "your_wifi_password"
 #define UDP_PORT 4210
 #define DEFAULT_VM_MEMORY (16 * 1024) // 16KB
 #define SPIFFS_PARTITION "spiffs"
@@ -180,29 +180,23 @@ int createVM(const String &filename)
   Serial.printf("VM created: %s (index: %d)\n", filename.c_str(), vmIndex);
   return vmIndex;
 }
-
 void startVM(int vmIndex)
 {
   if (vmIndex < 0 || vmIndex >= vmCount || vms[vmIndex].running)
     return;
 
-  // Create a copy of the vmIndex to pass to the task
   int *taskVmIndex = new int;
   *taskVmIndex = vmIndex;
 
-  // Create the VM task
   xTaskCreatePinnedToCore(
       [](void *pvParameters)
       {
-        // Get the vmIndex from the pointer
         int index = *(int *)pvParameters;
-        VM &vm = vms[index]; // Now you are referencing the correct VM
+        VM &vm = vms[index];
 
-        // Print how much memory is available before allocation
         Serial.printf("VM %d: Memory available before allocation: %d bytes\n", index, ESP.getFreeHeap());
-
         Serial.printf("VM %d: Attempting to allocate %d bytes for Duktape heap\n", index, vm.memoryAllocated);
-        // Allocate the memory
+
         void *heapMemory = malloc(vm.memoryAllocated);
         if (heapMemory == nullptr)
         {
@@ -210,10 +204,8 @@ void startVM(int vmIndex)
           goto cleanup;
         }
 
-        // Print how much memory is available after allocation
         Serial.printf("VM %d: Memory available after allocation: %d bytes\n", index, ESP.getFreeHeap());
 
-        // Create the Duktape heap INSIDE the VM task
         vm.ctx = duk_create_heap(
             [](void *udata, size_t size) -> void *
             {
@@ -229,7 +221,7 @@ void startVM(int vmIndex)
               if (size == 0)
               {
                 free(ptr);
-                return NULL; // Use NULL instead of nullptr
+                return NULL;
               }
               void *newPtr = realloc(ptr, size);
               if (newPtr == NULL)
@@ -253,7 +245,6 @@ void startVM(int vmIndex)
           goto cleanup;
         }
 
-        // Register bindings INSIDE the VM task
         registerDuktapeBindings(vm.ctx, index);
         Serial.printf("VM %d: Duktape bindings registered for %s\n", index, vm.filename.c_str());
 
@@ -263,14 +254,21 @@ void startVM(int vmIndex)
           goto cleanup;
         }
 
-        // Set running flag AFTER successful initialization
         vm.running = true;
         Serial.printf("VM %d started: %s (Core %d)\n", index, vm.filename.c_str(), vm.core);
 
-        while (vm.running && !vm.needsTermination)
+        // Duktape event loop with a termination check within the loop
+        while (vm.running)
         {
+          if (vm.needsTermination)
+          {
+            Serial.printf("VM %d: Termination requested, breaking loop.\n", index);
+            break; // Exit the loop if termination is requested
+          }
+
+          duk_peval_string(vm.ctx, ""); // Process Duktape events
+
           vm.lastRunTime = get_ms();
-          // Process messages
           String msg;
           while (xQueueReceive(vm.messageQueue, &msg, 0) == pdTRUE)
           {
@@ -281,7 +279,7 @@ void startVM(int vmIndex)
               duk_pop(vm.ctx);
             }
             duk_pop(vm.ctx);
-            vTaskDelay(1);
+            vTaskDelay(1); // Allow other tasks to run
           }
           if (vm.fileChanged)
           {
@@ -291,8 +289,10 @@ void startVM(int vmIndex)
               Serial.printf("VM %d: Error reloading file %s\n", index, vm.filename.c_str());
             }
           }
-          delay(1);
+
+          vTaskDelay(1); // Small delay for responsiveness
         }
+
       cleanup:
         Serial.println("Cleanup started");
         if (vm.ctx)
@@ -305,20 +305,18 @@ void startVM(int vmIndex)
           Serial.println("Freeing heap memory");
           free(heapMemory);
         }
-        vm.running = false; // Reset running flag before deleting the task
+        vm.running = false;
         vTaskDelete(NULL);
         vQueueDelete(vm.messageQueue);
-        // Free the memory allocated for the vmIndex pointer
         delete (int *)pvParameters;
       },
       vms[vmIndex].filename.c_str(),
       VM_STACK_SIZE,
-      taskVmIndex, // Pass the pointer to the task
+      taskVmIndex,
       1,
       &vms[vmIndex].taskHandle,
       vms[vmIndex].core);
 
-  // Check if task creation failed
   if (vms[vmIndex].taskHandle == NULL)
   {
     Serial.printf("Failed to start task for VM %d\n", vmIndex);
@@ -337,14 +335,19 @@ void stopVM(int vmIndex)
 
   vms[vmIndex].needsTermination = true;
 
-  //quick delay
-  delay(100);
+  // Destroy the Duktape context directly
+  if (vms[vmIndex].ctx)
+  {
+    //kill any running tasks
+    duk_destroy_heap(vms[vmIndex].ctx);
+    vms[vmIndex].ctx = NULL; // Make sure to set the context to NULL
+  }
 
-  // Wait for the task to finish
+  // Efficiently wait for the task to finish without blocking (still needed)
   int timeout = 5000; // 5 seconds timeout
   while (vms[vmIndex].running && timeout > 0)
   {
-    delay(10);
+    vTaskDelay(10); // Yield while waiting
     timeout -= 10;
   }
 
@@ -357,13 +360,10 @@ void stopVM(int vmIndex)
     }
   }
 
-  // wipe the ctx
-
   // Reset VM state
   vms[vmIndex].running = false;
   vms[vmIndex].needsTermination = false;
   vms[vmIndex].taskHandle = NULL;
-  vms[vmIndex].ctx = NULL;
 
   if (vms[vmIndex].messageQueue != NULL)
   {
@@ -701,7 +701,9 @@ duk_ret_t duk_print(duk_context *ctx)
 duk_ret_t duk_wait(duk_context *ctx)
 {
   int ms = duk_require_int(ctx, 0);
-  delay(ms);
+  // Convert milliseconds to ticks
+  TickType_t ticks = ms / portTICK_PERIOD_MS;
+  vTaskDelay(ticks);
   return 0;
 }
 
@@ -735,7 +737,7 @@ void registerDuktapeBindings(duk_context *ctx, int vmIndex)
   // Set __filename to the full path of the currently running script
   duk_push_string(ctx, ("/SPIFFS/" + vms[vmIndex].filename).c_str());
   duk_put_global_string(ctx, "__filename");
-  //add the wait function
+  // add the wait function
   duk_push_c_function(ctx, duk_wait, 1);
   duk_put_global_string(ctx, "wait");
 }
@@ -848,11 +850,9 @@ void handleSerialInput()
         {
           Serial.println("Failed to seek to the beginning of the file.");
         }
-        else
       }
 
-        file.close();
-      }
+      file.close();
     }
     else if (command == "help")
     {
@@ -971,7 +971,7 @@ void setup()
 void loop()
 {
   handleSerialInput();
-  ftp.handle(); // Handle FTP client requests
+  ftp.handle(); // Handle FTP client requests (If you still have FTP, remove it for TinyUSB)
 
   // Monitor and reschedule VMs
   for (int i = 0; i < vmCount; i++)
@@ -999,5 +999,5 @@ void loop()
     }
   }
 
-  delay(10);
+  vTaskDelay(10); // Use vTaskDelay in the main loop for responsiveness
 }
