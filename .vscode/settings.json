@@ -1,0 +1,7 @@
+{
+    "idf.openOcdConfigs": [
+        "board/esp32s3-builtin.cfg"
+    ],
+    "idf.flashType": "UART",
+    "idf.port": "/dev/ttyACM0"
+}
