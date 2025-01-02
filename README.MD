@@ -56,69 +56,140 @@ The code is organized into several sections:
 This section details the JavaScript functions available within each VM. These provide access to ESP32 hardware and features.  Each function needs the `vmIndex` parameter to identify the calling VM.  `vmIndex` is available as a global variable within the Duktape context.
 
 
-### JavaScript Bindings
+### JavaScript API Reference
 
-**GPIO Control:**
+#### Core Functions
+```javascript
+// Print to serial console
+print("message");
 
-* `digitalWrite(pin, value, vmIndex)`: Controls a digital pin.
-    * `pin`: GPIO pin number (0-39).
-    * `value`: HIGH or LOW.
-    * `vmIndex`: Calling VM index.
+// Delay execution
+wait(milliseconds);
+delay(milliseconds);
 
-* `digitalRead(pin, vmIndex)`: Reads a digital pin.
-    * `pin`: GPIO pin number (0-39).
-    * `vmIndex`: Calling VM index.
-    * **Returns:** HIGH or LOW.
+// Get system time
+millis();  // returns milliseconds since boot
+```
 
-* `analogRead(pin, vmIndex)`: Reads an analog pin.
-    * `pin`: GPIO pin number (0-39). Must be a valid analog pin.
-    * `vmIndex`: Calling VM index.
-    * **Returns:** Analog value (0-4095).
+#### GPIO Operations
+```javascript
+// Pin mode configuration
+pinMode(pin, mode);  // mode: INPUT, OUTPUT, INPUT_PULLUP
 
-* `analogWrite(pin, value, vmIndex)`: Writes an analog value (PWM).
-    * `pin`: GPIO pin number (0-39). Must be a valid PWM pin.
-    * `value`: Value (0-255).
-    * `vmIndex`: Calling VM index.
+// Digital operations
+digitalWrite(pin, value);  // value: HIGH/LOW (1/0)
+digitalRead(pin);  // returns: 1 or 0
 
-* `pinMode(pin, mode, vmIndex)`: Sets pin mode.
-    * `pin`: GPIO pin number (0-39).
-    * `mode`: INPUT, OUTPUT, INPUT_PULLUP.
-    * `vmIndex`: Calling VM index.
+// Analog operations
+analogRead(pin);  // returns: 0-4095
+analogWrite(pin, value);  // value: 0-255
+```
 
+#### I2C Interface
+```javascript
+// Initialize I2C
+i2c.begin(sdaPin, sclPin[, frequency]);  // frequency default: 100000
 
-**UDP Networking:**
+// Write data
+i2c.write(address, value);  // returns: error code
 
-* `udpSend(ip, port, message, vmIndex)`: Sends a UDP packet.
-    * `ip`: Destination IP address (string).
-    * `port`: Destination port.
-    * `message`: Message (string).
-    * `vmIndex`: Calling VM index.
+// Read data
+i2c.read(address, bytes);  // returns: array of bytes
+```
 
-* `udpReceive(vmIndex)`: Receives a UDP packet.
-    * `vmIndex`: Calling VM index.
-    * **Returns:** Received message (string), or "" if none.
+#### SPI Interface
+```javascript
+// Initialize SPI
+spi.begin(sckPin, misoPin, mosiPin, ssPin);
 
+// Transfer data
+spi.transfer(dataArray);  // returns: received data array
+```
 
-**Inter-VM Communication:**
+#### ADC Configuration
+```javascript
+// Configure ADC
+adc.config(pin, resolution, attenuation);  // Set ADC parameters
+adc.read(pin);  // Read ADC value
+```
 
-* `sendMessage(receiverID, message, vmIndex)`: Sends a message to another VM.
-    * `receiverID`: Recipient VM index.
-    * `message`: Message (string).
-    * `vmIndex`: Calling VM index.
+#### Touch Sensors
+```javascript
+// Read touch sensor
+touchRead(pin);  // returns: touch value
 
-* `receiveMessage(vmIndex)`: Receives a message.
-    * `vmIndex`: Calling VM index.
-    * **Returns:** Received message (string), or "" if none.
+// Configure touch interrupt
+touchAttachInterrupt(pin, threshold);
+```
 
-**Other Utilities:**
+#### RTC Functions
+```javascript
+// Get current time
+rtc.getTime();  // returns: { seconds, microseconds }
+```
 
-* `print(message)`: Prints to the serial console.
-    * `message`: Message (string).
+#### Sleep Functions
+```javascript
+// Deep sleep
+deepSleep(microseconds);  // ESP32 will reset on wake
 
-* `wait(ms)`: Pauses execution.
-    * `ms`: Delay in milliseconds.
+// Light sleep
+lightSleep(microseconds);  // Execution continues after wake
+```
 
+#### LED Control (PWM)
+```javascript
+// Setup LED PWM
+ledc.setup(channel, frequency, resolution);
 
+// Attach pin to PWM channel
+ledc.attachPin(pin, channel);
+
+// Write PWM duty cycle
+ledc.write(channel, duty);  // duty: 0-((2^resolution)-1)
+```
+
+#### Timer Functions
+```javascript
+// Attach hardware timer
+timer.attach(timerNum, divider, countUp);  // returns: success boolean
+```
+
+#### WiFi Networking
+```javascript
+// Connect to WiFi
+wifi.connect(ssid, password);  // returns: success boolean
+
+// Disconnect from WiFi
+wifi.disconnect();
+
+// Get IP address
+wifi.getIP();  // returns: IP address string
+```
+
+#### UDP Communication
+```javascript
+// Create UDP socket
+let socket = new UDPSocket();
+
+// Start listening
+socket.begin(port);
+
+// Send UDP packet
+socket.send(message, ipAddress, port);
+
+// Receive UDP packet
+socket.receive();  // returns: received message or null
+```
+
+#### Inter-VM Communication
+```javascript
+// Send message to another VM
+sendMessage(targetVM, message);
+
+// Receive message from another VM
+receiveMessage();  // returns: message or null
+```
 
 ## 4. Uploading the Code
 
