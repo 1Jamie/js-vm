@@ -14,6 +14,19 @@ void printVMInfo(int vmIndex) {
   }
 }
 
+void listFiles(File dir, String prefix = "") {
+  File file = dir.openNextFile();
+  while (file) {
+    if (file.isDirectory()) {
+      Serial.printf("%s[DIR] %s\n", prefix.c_str(), file.name());
+      listFiles(file, prefix + "  ");
+    } else {
+      Serial.printf("%s%s (%d bytes)\n", prefix.c_str(), file.name(), file.size());
+    }
+    file = dir.openNextFile();
+  }
+}
+
 void handleSerialCommand(const String& command) {
   Serial.printf("Received command: %s\n", command.c_str());
   
@@ -32,7 +45,24 @@ void handleSerialCommand(const String& command) {
 
   Serial.printf("Action: %s, Args: %s\n", action.c_str(), args.c_str());
 
-  if (action == "create") {
+  if (action == "list" || action == "ls") {
+    File root = FFat.open("/");
+    if (!root) {
+      Serial.println("Failed to open root directory");
+      return;
+    }
+    if (!root.isDirectory()) {
+      Serial.println("Root is not a directory");
+      root.close();
+      return;
+    }
+    Serial.println("\nFiles in FFat:");
+    Serial.println("==============");
+    listFiles(root);
+    root.close();
+    return;
+  }
+  else if (action == "create") {
     if (args.length() == 0) {
       Serial.println("Usage: create <filename>");
       return;
@@ -139,6 +169,7 @@ void handleSerialCommand(const String& command) {
     Serial.println("  vms - List all active VMs");
     Serial.println("  stop <vm_id> - Stop a VM");
     Serial.println("  start <vm_id> - Start a stopped VM");
+    Serial.println("  list/ls - List files in FFat filesystem");
   }
 }
 
