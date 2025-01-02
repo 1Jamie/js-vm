@@ -163,3 +163,25 @@ while (true) {
 * **Communication errors:** Check the serial monitor for error messages.
 * **Library Issues:** Verify library compatibility and correct installation.
 
+## 8. FTP Server
+
+The ESP32 includes a built-in FTP server for easy file management. The server supports standard FTP clients like FileZilla, WinSCP, or command-line FTP.
+
+### Connection Details
+- Host: ESP32's IP address (shown on serial console at startup)
+- Port: 21
+- Username: esp32
+- Password: esp32
+- Mode: Both Active and Passive modes supported
+
+### Supported FTP Commands
+- Basic: USER, PASS, SYST, FEAT, PWD, TYPE
+- File Operations: STOR, RETR, DELE, LIST, SIZE
+- Directory Operations: CWD, MKD, RMD (flat filesystem)
+- Transfer Modes: PORT, PASV
+
+### File System Notes
+- Uses FFat filesystem
+- Flat file structure (no subdirectories)
+- All paths are relative to root (/)
+- Files are stored persistently
